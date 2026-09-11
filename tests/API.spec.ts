@@ -19,7 +19,7 @@ test('Simple Get Request', async ({ request }) => {
 
 });
 
-test('Simple Post Request', async ({ request }) => {
+test('Simple Post ReQUEST', async ({ request }) => {
 
     const response = await request.post('https://conduit-api.bondaracademy.com/api/articles/' ,{
         headers : {
