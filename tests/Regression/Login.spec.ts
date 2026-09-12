@@ -1,7 +1,7 @@
 import { test } from '@playwright/test';
 import { LoginPage } from '../../pages/LoginPage';
 
-test('Login Test', async ({ page }) => {
+test('Login Test@Regression', async ({ page }) => {
   const loginPage = new LoginPage(page);
 
   await loginPage.navigateToLoginPage();
