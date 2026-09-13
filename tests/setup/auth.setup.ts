@@ -10,6 +10,8 @@ setup('authenticate', async ({ page }) => {
     '1234565666'
   );
 
+  await page.waitForURL('https://cw.vriodigital.com/E/ask');
+
   await page.context().storageState({
     path: 'playwright/.auth/user.json'
   });
