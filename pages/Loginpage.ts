@@ -16,4 +16,8 @@ export class LoginPage {
     await this.page.getByRole('textbox', { name: 'Password' }).fill(password);
     await this.page.getByRole('button', { name: 'Sign in' }).click();
   }
+
+  async logout() {
+  await this.page.getByRole('button', { name: 'Sign out' }).click();
+}
 }
