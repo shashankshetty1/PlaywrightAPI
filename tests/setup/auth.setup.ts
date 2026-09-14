@@ -1,5 +1,5 @@
 import { test as setup } from '@playwright/test';
-import { LoginPage } from '../../pages/Loginpage';
+import { LoginPage } from '../../pages/LoginPage';
 
 setup('authenticate', async ({ page }) => {
   const loginPage = new LoginPage(page);
