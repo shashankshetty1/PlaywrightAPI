@@ -1,172 +1,178 @@
 # PlaywrightAPI Framework
 
-This document describes the framework as it exists in this repository. Recommendations are kept in a separate section so they are not confused with implemented behaviour.
+This document describes the Playwright framework as it currently exists in this repository.
+
+## Framework overview
+
+The project uses Playwright Test with one browser project: `chromium`. A setup project logs in through the UI and saves browser storage state before Chromium tests run.
+
+The currently implemented tests are:
+
+- `tests/setup/auth.setup.ts` - authenticates and writes `playwright/.auth/user.json`.
+- `tests/smoke/auth/login.spec.ts` - logs in through the UI and checks that the user reaches `https://cw.vriodigital.com/E/ask`.
+- `tests/Regression/auth/login.spec.ts` - runs the same login-and-URL verification flow in the regression folder.
+
+The remaining suite files are intentionally empty placeholders. Playwright does not execute an empty spec file.
 
 ## Current project structure
 
 ```text
 PlaywrightAPI/
-├── .github/workflows/playwright.yml  # GitHub Actions workflow
-├── .gitignore                        # Ignored generated and sensitive files
-├── pages/
-│   └── Loginpage.ts                  # Login page object
-├── playwright/
-│   └── .auth/user.json               # Generated, ignored saved browser state
-├── tests/
-│   ├── auth.setup.ts                 # Authentication setup test
-│   ├── API.spec.ts                   # API tests
-│   ├── smoke/
-│   │   └── Login.spec.ts             # Smoke login test
-│   └── Regression/
-│       └── Login.spec.ts             # Regression login test
-├── playwright.config.ts              # Playwright configuration
-├── package.json                      # Package metadata and dependencies
-├── package-lock.json                 # Locked dependency tree
-└── README.md                         # Project title only
+|- pages/
+|  |- LoginPage.ts
+|  |- AskPage.ts
+|  |- GraphStudioPage.ts
+|  `- SourcesPage.ts
+|- playwright/
+|  `- .auth/user.json                 # Generated authentication state
+|- tests/
+|  |- setup/
+|  |  `- auth.setup.ts
+|  |- smoke/
+|  |  |- auth/login.spec.ts
+|  |  |- ask/page-load.spec.ts
+|  |  |- graph-studio/page-load.spec.ts
+|  |  |- sources/page-load.spec.ts
+|  |  `- reports/page-load.spec.ts
+|  |- Regression/
+|  |  |- auth/
+|  |  |- ask/
+|  |  |- graph-studio/
+|  |  |- sources/
+|  |  |- reports/
+|  |  |- what-if-lenses/
+|  |  `- data-catalog/
+|  |- e2e/
+|  |- api/
+|- playwright.config.ts
+|- package.json
+`- FRAMEWORK.md
 ```
 
-`node_modules/`, `test-results/`, and `playwright-report/` exist locally but are generated dependencies or test output. They are ignored by Git. The `playwright/.auth/` directory is also ignored, so saved authenticated state is not committed.
+`node_modules/`, `test-results/`, `playwright-report/`, and `playwright/.auth/` are generated locally and should not be committed.
 
-## Page Object Model
+Windows file systems are case-insensitive, so the regression suite currently appears as `tests/Regression/`. Use that casing in commands for consistency with the repository.
 
-The framework currently has one Page Object Model (POM) class: `LoginPage` in `pages/Loginpage.ts`. Test files create the class with Playwright's `page` fixture and call its methods, for example:
+## Page objects
 
-```ts
-const loginPage = new LoginPage(page);
-await loginPage.navigateToLoginPage();
-await loginPage.login(email, password);
-```
+### LoginPage
 
-This keeps the login URL and its locators out of the test bodies. There are no page objects yet for sources, API clients, or other application screens.
-
-### LoginPage implementation
-
-`LoginPage` receives a `Page` in its constructor and retains it as a private field. It provides two methods:
+`pages/LoginPage.ts` contains the implemented `LoginPage` page object. It keeps login navigation and locators outside test files.
 
 - `navigateToLoginPage()` opens `https://cw.vriodigital.com/login`.
-- `login(email, password)` finds the Email and Password textboxes by accessible role/name, fills them, and clicks the Sign in button.
+- `login(email, password)` fills the Email and Password fields and clicks **Sign in**.
 
-`tests/auth.setup.ts`, `tests/smoke/Login.spec.ts`, and `tests/Regression/Login.spec.ts` import and use this page object. The imports use `../pages/LoginPage` or `../../pages/LoginPage`, while the physical file is named `Loginpage.ts`. This works on the current Windows workspace because its file system is case-insensitive; see the recommendations for a portability concern.
+The other page-object files (`AskPage.ts`, `GraphStudioPage.ts`, and `SourcesPage.ts`) are empty placeholders for future UI coverage.
 
-## Authentication and storage state
+## Authentication flow
 
-Authentication is set up through `tests/auth.setup.ts` rather than `globalSetup`.
+`tests/setup/auth.setup.ts` is the setup-project test.
 
-1. The setup test creates `LoginPage` and performs UI login with the email and password currently written in that test.
-2. It saves the complete browser context state to `playwright/.auth/user.json` with `page.context().storageState(...)`.
-3. The Chromium project loads this file through `storageState` before its tests start.
+1. It opens the login page using `LoginPage`.
+2. It signs in with the configured credentials.
+3. It saves cookies and local storage to `playwright/.auth/user.json`.
 
-The saved state can contain cookies and local storage, so `playwright/.auth/` is excluded by `.gitignore`. A local `user.json` is present in this workspace, but it is regenerated by the setup test as part of normal project execution.
+The Chromium project depends on this setup project, so a normal Chromium test run performs authentication first. The smoke and regression login tests deliberately log in again because they test the interactive login flow itself.
 
-Although the Chromium project receives authenticated state, the current smoke and regression login tests explicitly navigate to the login page and enter credentials again. In other words, storage state is configured but these two tests do not rely on it to skip login.
+Credentials are currently written directly in the setup and login specs. Move them to environment variables or a secrets store before sharing the repository or using it in CI.
 
 ## Playwright configuration
 
-`playwright.config.ts` uses `defineConfig` with these active settings:
+`playwright.config.ts` defines:
 
-- `testDir: './tests'` searches for tests under `tests`.
-- `reporter: 'html'` enables the HTML reporter.
-- `use.trace: 'on-first-retry'` requests tracing for the first retry of a failed test. No `retries` value is configured in this repository, so ordinary runs have no configured retry to trigger that trace.
-- The `setup` project matches only `auth.setup.ts`.
-- The `chromium` project uses Playwright's `Desktop Chrome` device settings, loads `playwright/.auth/user.json`, and declares `setup` as a dependency.
+- `testDir: './tests'` to discover tests under `tests/`.
+- The HTML reporter, with output in `playwright-report/`.
+- `trace: 'on-first-retry'` for retry diagnostics.
+- A `setup` project matching `auth.setup.ts`.
+- A `chromium` project using Playwright's `Desktop Chrome` settings and the saved authentication state.
+- `dependencies: ['setup']`, ensuring authentication runs before Chromium tests.
 
-The configuration has no Firefox or WebKit project, base URL, screenshots/video setting, explicit timeouts, test retries, or named smoke/regression projects.
+There are no dedicated smoke, regression, API, end-to-end, Firefox, or WebKit projects yet. Smoke and regression are currently organized by folders only.
 
-## Setup-project dependencies
+## Test suites
 
-The `chromium` project has `dependencies: ['setup']`. When Chromium tests are selected normally, Playwright runs the `setup` project first. The setup project writes the storage-state file, then Chromium tests load that file. This applies to all current Chromium test files, including `API.spec.ts`, not only the UI suites.
+### Smoke
 
-Running the `setup` project by itself only performs authentication; it does not run the Chromium tests. Passing `--no-deps` to a Chromium command would skip this dependency and depend on an already-existing state file instead.
+`tests/smoke/` contains an implemented login test plus page-load placeholders for Ask, Graph Studio, Sources, and Reports.
 
-## Test suites and strategy
+### Regression
 
-### Smoke testing
+`tests/Regression/` contains an implemented login test plus placeholders for authentication, Ask, Graph Studio, Sources, Reports, What-if Lenses, and Data Catalog scenarios.
 
-The implemented smoke suite is `tests/smoke/Login.spec.ts`. It is a single `Login Test` that navigates to the ContextWeave login page and logs in through `LoginPage`. It contains no assertion after login. The folder name is the only current smoke categorization; there is no smoke project, grep tag, or npm script.
+### End-to-end and API
 
-### Sanity testing
+`tests/e2e/` and `tests/api/` contain empty placeholders for future workflows and API coverage. They do not run until Playwright tests are added to them.
 
-There is no `tests/sanity` folder, sanity-named test, tag, project, or command in the current codebase. Therefore, no separate sanity strategy or runnable sanity suite currently exists.
+## Reports and artifacts
 
-### Regression testing
+Playwright writes the HTML report to `playwright-report/`. Test artifacts and run metadata are written to `test-results/`. Authentication state is written to `playwright/.auth/user.json` by the setup project.
 
-The implemented regression suite is `tests/Regression/Login.spec.ts`. It currently has the same single UI-login flow as the smoke test, including no post-login assertion. As with smoke, `Regression` is a folder-based label only; the configuration does not create a separate regression project.
+## Commands
 
-### API testing
+Run these commands from the repository root. On this Windows machine, use `npx.cmd` because PowerShell may block `npx.ps1`.
 
-`tests/API.spec.ts` holds two API tests against `https://conduit-api.bondaracademy.com`:
+Install dependencies:
 
-- `Simple Get Request` calls `/api/tags`, logs its JSON response, and asserts the first tag equals `Test` and the tag collection has length 10.
-- `Simple Post ReQUEST` sends an article to `/api/articles/` with an inline Authorization token and request body. It does not assert the response status or response body.
-
-These API tests use Playwright's `request` fixture directly. There is no API page object/client abstraction and no independent API project; as configured, they run in the Chromium project after the UI authentication setup dependency.
-
-## Running tests
-
-Install the locked dependencies first:
-
-```bash
+```powershell
 npm ci
 ```
 
-Install Playwright's browser binaries when they are not already installed:
+Install the Playwright browser binaries:
 
-```bash
-npx playwright install
+```powershell
+npx.cmd playwright install
 ```
 
-Run all configured Chromium tests (with authentication setup first):
+Run all tests:
 
-```bash
-npx playwright test
+```powershell
+npx.cmd playwright test
 ```
 
-Run the current smoke or regression folder:
+Run all Chromium tests explicitly:
 
-```bash
-npx playwright test tests/smoke
-npx playwright test tests/Regression
+```powershell
+npx.cmd playwright test --project=chromium
 ```
 
-Run the API spec or only the authentication setup project:
+Run all Chromium tests in headed Chrome:
 
-```bash
-npx playwright test tests/API.spec.ts
-npx playwright test --project=setup
+```powershell
+npx.cmd playwright test --project=chromium --headed
 ```
 
-There is no sanity command at present because no sanity suite exists. On this Windows machine, if PowerShell blocks `npx.ps1` under its execution policy, the equivalent command is `npx.cmd playwright test`.
+Run the authentication setup only:
 
-`package.json` has no `scripts` entries, so commands are currently run through `npx` rather than `npm run` shortcuts.
-
-## Reporting
-
-The configured reporter is Playwright's HTML reporter. Its report output is the ignored `playwright-report/` directory. After a run, it can be viewed with:
-
-```bash
-npx playwright show-report
+```powershell
+npx.cmd playwright test --project=setup
 ```
 
-The CI workflow uploads `playwright-report/` as an artifact named `playwright-report` for 30 days, provided the workflow was not cancelled. Traces are requested only for a first retry, as described in the configuration section.
+Run the smoke suite:
 
-## Git and CI workflow
+```powershell
+npx.cmd playwright test tests/smoke --project=chromium
+```
 
-The repository contains `.gitignore` rules for dependencies, Playwright results/reports, cached browser data, and authentication state. This prevents `node_modules`, test artifacts, and `playwright/.auth/user.json` from being committed.
+Run the regression suite:
 
-`.github/workflows/playwright.yml` runs on pushes and pull requests targeting `main` or `master`. It checks out the repository, installs the Node LTS version, runs `npm ci`, installs Playwright browsers and system dependencies using `npx playwright install --with-deps`, then runs `npx playwright test`. Finally, it uploads the HTML report artifact for 30 days when the workflow is not cancelled.
+```powershell
+npx.cmd playwright test tests/Regression --project=chromium
+```
 
-No branch naming rules, pull-request templates, linting, formatting, or pre-commit hooks are defined in the files currently present.
+Run the login tests marked with `@Smoke`:
 
-## Recommended improvements (not currently implemented)
+```powershell
+npx.cmd playwright test --project=chromium --grep "@Smoke"
+```
 
-- Rename `pages/Loginpage.ts` to `pages/LoginPage.ts` so the filename exactly matches the imports and works reliably on Linux CI.
-- Move UI credentials and the API Authorization token out of source code into environment variables or a secret manager; do not commit real credentials or tokens.
-- Add meaningful assertions to UI login tests, such as a verified post-login URL or a visible authenticated-page element.
-- Decide whether login tests should deliberately test interactive login or whether authenticated functional tests should use `storageState`; avoid performing redundant UI login where it is not the behavior under test.
-- Add suite tags or dedicated Playwright projects/npm scripts for smoke, sanity, regression, and API tests, instead of relying only on folders.
-- Create a defined sanity suite before documenting or running sanity as a separate quality gate.
-- Add API response status/body assertions and move repeated API setup into a typed API client or helper where it becomes useful.
-- Add `baseURL`, shared test data/credentials configuration, and environment-specific configuration if the framework needs to target more than one environment.
-- Configure retry, timeout, screenshot, and video policies explicitly to make failure diagnostics predictable.
-- Add page objects for additional UI areas as coverage expands, keeping locators and common actions out of test specs.
-- Add npm scripts for common commands and expand the README with setup prerequisites and CI/report instructions.
+Run one smoke login test:
+
+```powershell
+npx.cmd playwright test tests/smoke/auth/login.spec.ts --project=chromium
+```
+
+Show the latest HTML report:
+
+```powershell
+npx.cmd playwright show-report
+```
