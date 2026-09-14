@@ -5,6 +5,7 @@ export class LoginPage {
 
   constructor(page: Page) {
     this.page = page;
+    
   }
 
   async navigateToLoginPage() {
